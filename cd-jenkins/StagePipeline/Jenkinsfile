@@ -21,7 +21,12 @@ pipeline{
         NEXUS_GRP_REPO = 'vpro-maven-group'
         NEXUS_LOGIN = 'nexuslogin'
         SONARSERVER = 'sonarserver'
-        SONARSCANNER = 'sonarscanner'    
+        SONARSCANNER = 'sonarscanner'
+        registryCredential = 'ecr:eu-central-1:awscreds'
+        appRegistry = '514982325589.dkr.ecr.eu-central-1.amazonaws.com/vpro'
+        vprofileRegistry = 'https://514982325589.dkr.ecr.eu-central-1.amazonaws.com'
+        cluster = 'stagingvpro'
+        service = 'vproappstagesvc'    
     }
     
     stages{
@@ -87,6 +92,30 @@ pipeline{
                         type: 'war'] 
                     ]
                 )
+            }
+        }
+        stage('Build App Image'){
+            steps{
+                script{
+                    dockerImage = docker.build( appRegistry + ":$BUILD_NUMBER", "./Docker-files/app/multistage/")
+                }
+            }
+        }
+        stage('Upload App Image'){
+            steps{
+                script{
+                    docker.withRegistry( vprofileRegistry, registryCredential ){
+                        dockerImage.push("$BUILD_NUMBER")
+                        dockerImage.push('latest')
+                    }
+                }
+            }
+        }
+        stage('Deploy to ECS staging'){
+            steps{
+                withAWS(credentials: 'awscreds', region: 'eu-central-1'){
+                    sh 'aws ecs update-service --cluster ${cluster} --service ${service} --force-new-deployment'
+                }
             }
         }    
     }
